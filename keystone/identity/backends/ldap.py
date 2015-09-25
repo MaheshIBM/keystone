@@ -55,6 +55,8 @@ class Identity(identity.Driver):
     def authenticate(self, user_id, password):
         try:
             user_ref = self._get_user(user_id)
+            if('locked_time' in user_ref):
+                raise AssertionError(_('User Account for %s is locked' % user_ref['name']))
         except exception.UserNotFound:
             raise AssertionError(_('Invalid user / password'))
         if not user_id or not password:
@@ -88,8 +90,13 @@ class Identity(identity.Driver):
 
     # CRUD
     def create_user(self, user_id, user):
-        self.user.check_allow_create()
-        user_ref = self.user.create(user)
+        try:
+            user_ref = self.user.create(user)
+            return self.user.filter_attributes(user_ref)
+        except ldap.CONSTRAINT_VIOLATION as e:
+            LOG.exception(e)
+            raise exception.ValidationError(e.message['info'])
+            LOG.info(e.message['info'])        
         return self.user.filter_attributes(user_ref)
 
     def update_user(self, user_id, user):
@@ -106,8 +113,13 @@ class Identity(identity.Driver):
             # values are already equal.
             user['enabled'] = not user['enabled']
             old_obj['enabled'] = not old_obj['enabled']
+        try:
+            self.user.update(user_id, user, old_obj)
+        except ldap.CONSTRAINT_VIOLATION as e:
+            LOG.exception(e)
+            raise exception.ValidationError(e.message['info'])
+            LOG.info(e.message['info'])
 
-        self.user.update(user_id, user, old_obj)
         return self.user.get_filtered(user_id)
 
     def delete_user(self, user_id):
@@ -203,7 +215,8 @@ class UserApi(common_ldap.EnabledEmuMixIn, common_ldap.BaseLdap):
                                'email': 'mail',
                                'name': 'name',
                                'enabled': 'enabled',
-                               'default_project_id': 'default_project_id'}
+                               'default_project_id': 'default_project_id',
+                               'locked_time': 'locked_time'}
     immutable_attrs = ['id']
 
     model = models.User

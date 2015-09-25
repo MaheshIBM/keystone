@@ -24,6 +24,14 @@ _SSO_CALLBACK = '/etc/keystone/sso_callback_template.html'
 
 FILE_OPTIONS = {
     None: [
+
+        cfg.StrOpt('password_regex',default='',
+                   help='The regular expression for strength test of the password'),
+
+        cfg.StrOpt('password_regex_message',default='Password not strong enough',
+                   help='The message shown to the user when the password strength check fails '),
+                   
+
         cfg.StrOpt('admin_token', secret=True, default='ADMIN',
                    help='A "shared secret" that can be used to bootstrap '
                         'Keystone. This "token" does not represent a user, '
@@ -635,6 +643,9 @@ FILE_OPTIONS = {
         cfg.StrOpt('user_default_project_id_attribute',
                    help='LDAP attribute mapped to default_project_id for '
                         'users.'),
+        cfg.StrOpt('user_locked_time_attribute',
+                    help='Time user account was'
+                         ' locked'),
         cfg.BoolOpt('user_allow_create', default=True,
                     help='Allow user creation in LDAP backend.'),
         cfg.BoolOpt('user_allow_update', default=True,

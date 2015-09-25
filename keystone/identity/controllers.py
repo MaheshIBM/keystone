@@ -14,6 +14,7 @@
 
 """Workflow Logic the Identity service."""
 
+import re
 from oslo_config import cfg
 from oslo_log import log
 
@@ -65,6 +66,9 @@ class User(controller.V2Controller):
         user = self._normalize_dict(user)
         self.assert_admin(context)
 
+        if user.get('password') is not None:
+            User.check_pwd_policies(user['password'], user['name'])
+
         if 'name' not in user or not user['name']:
             msg = _('Name field is required and cannot be empty')
             raise exception.ValidationError(message=msg)
@@ -105,6 +109,10 @@ class User(controller.V2Controller):
         old_user_ref = self.v3_to_v2_user(
             self.identity_api.get_user(user_id))
 
+        #Name and password are both being changed
+        if 'password' in user and 'name' in user:
+            User.check_pwd_policies(user['password'], user['name'])
+
         # Check whether a tenant is being added or changed for the user.
         # Catch the case where the tenant is being changed for a user and also
         # where a user previously had no tenant but a tenant is now being
@@ -117,6 +125,9 @@ class User(controller.V2Controller):
             # Make sure the new project actually exists before we perform the
             # user update.
             self.resource_api.get_project(default_project_id)
+
+        if 'password' in user and 'name' not in user:
+            User.check_pwd_policies(user['password'],old_user_ref['name'])
 
         user_ref = self.v3_to_v2_user(
             self.identity_api.update_user(user_id, user))
@@ -187,6 +198,22 @@ class User(controller.V2Controller):
             ref['password'] = ref.pop('OS-KSADM:password')
         return ref
 
+    @staticmethod
+    def check_syntax(password):
+        a = re.match(CONF.password_regex, password)
+        if not a:
+            raise exception.ValidationError(CONF.password_regex_message)
+   
+    @staticmethod
+    def check_pwd_policies(password, name):
+
+        #if passsword is empty allow it,
+        #since empty password wont allow user to login
+        if password is None:
+            return
+        if name in password or password in name:
+            raise exception.ValidationError("Password not strong enough: user name cannot be part of the password")
+        User.check_syntax(password)    
 
 @dependency.requires('identity_api')
 class UserV3(controller.V3Controller):
@@ -207,6 +234,9 @@ class UserV3(controller.V3Controller):
     @controller.protected()
     def create_user(self, context, user):
         self._require_attribute(user, 'name')
+
+        if user.get('password') is not None:
+            User.check_pwd_policies(user['password'], user['name'])
 
         # The manager layer will generate the unique ID for users
         ref = self._normalize_dict(user)
@@ -235,6 +265,18 @@ class UserV3(controller.V3Controller):
         return UserV3.wrap_member(context, ref)
 
     def _update_user(self, context, user_id, user):
+
+        #if password is being changed
+        #then check if name is not part of password
+        if 'password' in user:
+            #if name is not present then get it from the backend
+            if 'name' not in user:
+                old_user_ref = self.identity_api.get_user(user_id)
+                name = old_user_ref['name']
+            else:
+                name = user['name']
+            User.check_pwd_policies(user['password'], name)
+
         self._require_matching_id(user_id, user)
         self._require_matching_domain_id(
             user_id, user, self.identity_api.get_user)

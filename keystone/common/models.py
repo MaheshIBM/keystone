@@ -94,11 +94,12 @@ class User(Model):
         email
         enabled (bool, default True)
         default_project_id
+        locked_time
     """
 
     required_keys = ('id', 'name', 'domain_id')
     optional_keys = ('password', 'description', 'email', 'enabled',
-                     'default_project_id')
+                     'default_project_id', 'locked_time')
 
 
 class Group(Model):
